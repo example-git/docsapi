@@ -617,6 +617,7 @@
                             <button class="tab-button" data-tab="vscode">VSCode</button>
                             <button class="tab-button" data-tab="claude-desktop">Claude Desktop</button>
                             <button class="tab-button" data-tab="claude-code">Claude Code</button>
+                            <button class="tab-button" data-tab="codex">Codex</button>
                             <button class="tab-button" data-tab="other">Other</button>
                         </div>
 
@@ -710,6 +711,13 @@
                                 </p>
                             </div>
 
+                            <div class="tab-pane" id="codex-tab">
+                                <h3>Codex</h3>
+                                <p>Codex reads MCP servers from <code>~/.codex/config.toml</code>. Add a table like:</p>
+                                <pre><code>[mcp_servers.docsapi]
+url = "https://docsapi.xo.vg/mcp"</code></pre>
+                            </div>
+
                             <div class="tab-pane" id="other-tab">
                                 <h3>Other MCP Clients</h3>
                                 <p>docsapi's MCP server supports Streamable HTTP and Server-Sent Events (SSE) transport.
@@ -752,12 +760,6 @@
                 </ul>
             </div>
 
-            <div class="codex-config">
-                <h3>Codex config.toml entry</h3>
-                <p>Codex reads MCP servers from <code>~/.codex/config.toml</code>. Add a table like:</p>
-                <pre><code>[mcp_servers.docsapi]
-url = "https://docsapi.xo.vg/mcp"</code></pre>
-            </div>
 
             <div class="tools">
                 <h3>Available Tools</h3>
