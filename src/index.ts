@@ -6,15 +6,7 @@ import { HTTPException } from "hono/http-exception"
 import { trimTrailingSlash } from "hono/trailing-slash"
 
 import { NotFoundError } from "./lib/fetch"
-import {
-  fetchHIGPageData,
-  fetchHIGTableOfContents,
-  renderHIGFromJSON,
-  renderHIGTableOfContents,
-} from "./lib/hig"
 import { createMcpServer } from "./lib/mcp"
-import { fetchJSONData, renderFromJSON } from "./lib/reference"
-import { generateAppleDocUrl, isValidAppleDocUrl, normalizeDocumentationPath } from "./lib/url"
 import { fetchDocumentationMarkdown } from "./lib/docset"
 
 interface Env {
@@ -62,157 +54,6 @@ app.all("/mcp", async (c) => {
   const transport = new StreamableHTTPTransport()
   await mcpServer.connect(transport)
   return transport.handleRequest(c)
-})
-
-app.get("/documentation/*", async (c) => {
-  const path = c.req.path
-
-  // Normalize path and generate Apple Developer URL
-  const normalizedPath = normalizeDocumentationPath(path.replace("/documentation/", ""))
-  const appleUrl = generateAppleDocUrl(normalizedPath)
-
-  // Validate the URL is a proper Apple documentation URL
-  if (!isValidAppleDocUrl(appleUrl)) {
-    const errorResponse = new Response(
-      `# Invalid Apple Documentation URL
-
-The URL \`${appleUrl}\` is not a valid Apple Developer documentation page.
-
-## Supported URL Patterns
-
-This service only works with Apple Developer documentation URLs:
-
-- \`https://developer.apple.com/documentation/*\`
-
-## Examples
-
-- [Swift Documentation](https://sosumi.ai/documentation/swift)
-- [SwiftUI Documentation](https://sosumi.ai/documentation/swiftui)
-- [UIKit Documentation](https://sosumi.ai/documentation/uikit)
-
----
-*[sosumi.ai](https://sosumi.ai) - Making Apple docs AI-readable*`,
-      {
-        status: 400,
-        headers: { "Content-Type": "text/markdown; charset=utf-8" },
-      },
-    )
-    throw new HTTPException(400, { res: errorResponse })
-  }
-
-  const jsonData = await fetchJSONData(path)
-  const markdown = await renderFromJSON(jsonData, appleUrl)
-
-  // Validate that we got meaningful content
-  if (!markdown || markdown.trim().length < 100) {
-    throw new HTTPException(502, {
-      message:
-        "The Apple documentation page loaded but contained insufficient content. This may be a temporary issue with the page.",
-    })
-  }
-
-  const headers = {
-    "Content-Type": "text/markdown; charset=utf-8",
-    "Content-Location": appleUrl,
-    "Cache-Control": "public, max-age=3600, s-maxage=86400",
-    ETag: `"${Buffer.from(markdown).toString("base64").slice(0, 16)}"`,
-    "Last-Modified": new Date().toUTCString(),
-  }
-
-  if (c.req.header("Accept")?.includes("application/json")) {
-    return c.json(
-      {
-        url: appleUrl,
-        content: markdown,
-      },
-      200,
-      { ...headers, "Content-Type": "application/json; charset=utf-8" },
-    )
-  }
-
-  return c.text(markdown, 200, {
-    ...headers,
-    "Content-Type": "text/markdown; charset=utf-8",
-  })
-})
-
-app.get("/design/human-interface-guidelines", async (c) => {
-  // Handle the table of contents for HIG
-  const tocData = await fetchHIGTableOfContents()
-  const markdown = await renderHIGTableOfContents(tocData)
-
-  // Validate that we got meaningful content
-  if (!markdown || markdown.trim().length < 100) {
-    throw new HTTPException(502, {
-      message:
-        "The HIG table of contents loaded but contained insufficient content. This may be a temporary issue.",
-    })
-  }
-
-  const sourceUrl = "https://developer.apple.com/design/human-interface-guidelines/"
-  const headers = {
-    "Content-Type": "text/markdown; charset=utf-8",
-    "Content-Location": sourceUrl,
-    "Cache-Control": "public, max-age=3600, s-maxage=86400",
-    ETag: `"${Buffer.from(markdown).toString("base64").slice(0, 16)}"`,
-    "Last-Modified": new Date().toUTCString(),
-  }
-
-  if (c.req.header("Accept")?.includes("application/json")) {
-    return c.json(
-      {
-        url: sourceUrl,
-        content: markdown,
-      },
-      200,
-      { ...headers, "Content-Type": "application/json; charset=utf-8" },
-    )
-  }
-
-  return c.text(markdown, 200, headers)
-})
-
-app.get("/design/human-interface-guidelines/:path{.+}", async (c) => {
-  const higPath = c.req.param("path")
-  if (!higPath) {
-    // This should be caught by the route above, but just in case
-    throw new HTTPException(400, {
-      message: "Invalid HIG path",
-    })
-  }
-
-  const jsonData = await fetchHIGPageData(higPath)
-  const sourceUrl = `https://developer.apple.com/design/human-interface-guidelines/${higPath}`
-  const markdown = await renderHIGFromJSON(jsonData, sourceUrl)
-
-  // Validate that we got meaningful content
-  if (!markdown || markdown.trim().length < 100) {
-    throw new HTTPException(502, {
-      message:
-        "The HIG page loaded but contained insufficient content. This may be a temporary issue with the page.",
-    })
-  }
-
-  const headers = {
-    "Content-Type": "text/markdown; charset=utf-8",
-    "Content-Location": sourceUrl,
-    "Cache-Control": "public, max-age=3600, s-maxage=86400",
-    ETag: `"${Buffer.from(markdown).toString("base64").slice(0, 16)}"`,
-    "Last-Modified": new Date().toUTCString(),
-  }
-
-  if (c.req.header("Accept")?.includes("application/json")) {
-    return c.json(
-      {
-        url: sourceUrl,
-        content: markdown,
-      },
-      200,
-      { ...headers, "Content-Type": "application/json; charset=utf-8" },
-    )
-  }
-
-  return c.text(markdown, 200, headers)
 })
 
 app.get("/api/*", async (c) => {
@@ -296,11 +137,12 @@ app.all("*", (c) => {
 
 The requested resource was not found on this server.
 
-This service only works with Apple Developer documentation URLs:
-- \`https://sosumi.ai/documentation/*\`
+Use the API routes instead:
+- \`/api/https://docs.example.com/path\`
+- \`/api/search/https://docs.example.com?q=search\`
 
 ---
-*[sosumi.ai](https://sosumi.ai) - Making Apple docs AI-readable*`,
+*[docsapi](https://docsapi.xo.vg) - Documentation for LLMs*`,
     404,
     { "Content-Type": "text/markdown; charset=utf-8" },
   )
@@ -320,7 +162,7 @@ app.onError((err, c) => {
       return c.json(
         {
           error: "Documentation not found",
-          message: "The requested Apple Developer documentation page does not exist.",
+          message: "The requested documentation page does not exist.",
         },
         404,
       )
@@ -329,22 +171,15 @@ app.onError((err, c) => {
     return c.text(
       `# Not Found
 
-The requested Apple Developer documentation page does not exist.
+The requested documentation page does not exist.
 
 ## What you can try:
 
 1. **Check the URL** - Make sure the path is correct
 2. **Browse from a parent page** - Try starting from a higher-level documentation page
-3. **Search Apple Developer Documentation** - Use Apple's official search
-
-## Examples of valid URLs:
-
-- [Swift Documentation](https://sosumi.ai/documentation/swift)
-- [SwiftUI Documentation](https://sosumi.ai/documentation/swiftui)
-- [UIKit Documentation](https://sosumi.ai/documentation/uikit)
 
 ---
-*[sosumi.ai](https://sosumi.ai) - Making Apple docs AI-readable*`,
+*[docsapi](https://docsapi.xo.vg) - Documentation for LLMs*`,
       404,
       { "Content-Type": "text/markdown; charset=utf-8" },
     )
@@ -371,19 +206,13 @@ We encountered an unexpected issue while processing your request.
 ## What you can try:
 
 1. **Wait a moment and try again** - This is often a temporary issue
-2. **Check the URL** - Make sure you're using a valid Apple Developer documentation URL
+2. **Check the URL** - Make sure you're using a valid documentation URL
 3. **Try a different page** - Some pages may have temporary issues
-
-## Examples of valid URLs:
-
-- [Swift Documentation](https://sosumi.ai/documentation/swift)
-- [SwiftUI Documentation](https://sosumi.ai/documentation/swiftui)
-- [UIKit Documentation](https://sosumi.ai/documentation/uikit)
 
 If this issue persists, please report it to <info@sosumi.ai>.
 
 ---
-*[sosumi.ai](https://sosumi.ai) - Making Apple docs AI-readable*`,
+*[docsapi](https://docsapi.xo.vg) - Documentation for LLMs*`,
     500,
     { "Content-Type": "text/markdown; charset=utf-8" },
   )

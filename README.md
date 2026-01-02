@@ -6,22 +6,15 @@ The hosted instance for this fork is `https://docsapi.xo.vg`.
 
 ## Usage
 
-### Apple Docs HTTP API (docset: apple)
+### Apple Docs via /api (docset: apple)
 
-Replace `developer.apple.com` with `docsapi.xo.vg` 
-in any Apple Developer documentation URL:
+Fetch Apple docs by appending the raw URL to `/api/`:
 
-**Original:**
 ```
-https://developer.apple.com/documentation/swift/array
+https://docsapi.xo.vg/api/https://developer.apple.com/documentation/swift/array
 ```
 
-**AI-readable:**
-```
-https://docsapi.xo.vg/documentation/swift/array
-```
-
-This works for all API reference docs and Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) (HIG).
+This works for API reference docs and Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) (HIG).
 
 ### Generic Docs API
 
