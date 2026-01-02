@@ -10,7 +10,7 @@ import { generateAppleDocUrl, normalizeDocumentationPath } from "./url"
 
 export function createMcpServer() {
   const server = new McpServer({
-    name: "sosumi.ai",
+    name: "docsapi",
     version: "1.0.0",
   })
 

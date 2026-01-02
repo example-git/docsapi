@@ -1,12 +1,12 @@
 # docsapi
 
-docsapi is a fork of [sosumi.ai](https://github.com/nshipster/sosumi.ai). It keeps the original Apple Docs rendering pipeline and adds a generic documentation API plus MCP tools for common docset generators.
+docsapi is a fork of [sosumi.ai](https://github.com/nshipster/sosumi.ai). It focuses on a generic documentation API and MCP tools for common docset generators, with Apple Docs supported as a docset type.
 
 The hosted instance for this fork is `https://docsapi.xo.vg`.
 
 ## Usage
 
-### Apple Docs HTTP API
+### Apple Docs HTTP API (docset: apple)
 
 Replace `developer.apple.com` with `docsapi.xo.vg` 
 in any Apple Developer documentation URL:
@@ -21,8 +21,7 @@ https://developer.apple.com/documentation/swift/array
 https://docsapi.xo.vg/documentation/swift/array
 ```
 
-This works for all API reference docs, 
-as well as Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) (HIG).
+This works for all API reference docs and Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) (HIG).
 
 ### Generic Docs API
 
@@ -47,7 +46,7 @@ you can run this command to proxy over stdio:
 ```json
 {
   "mcpServers": {
-    "sosumi": {
+    "docsapi": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://docsapi.xo.vg/mcp"]
     }
@@ -77,26 +76,20 @@ See `https://docsapi.xo.vg/#clients` for client-specific instructions.
   - Parameters: `baseUrl` (string), `path` (string, optional), `docsetType` (string, optional)
   - Example: `baseUrl: "https://docs.rs"`, `path: "/serde/latest/serde/"`
   - Example: `baseUrl: "https://docs.python.org/3"`, `path: "/library/asyncio.html"`
+  - Example: `baseUrl: "https://developer.apple.com"`, `path: "/documentation/swift/array"`, `docsetType: "apple"`
   - Returns content as Markdown, plus structured metadata (`docsetType`)
 
 - `searchDocumentation` - Basic search for common docset generators
   - Parameters: `baseUrl` (string), `query` (string), `docsetType` (string, optional)
   - Returns structured results with titles and URLs
 
-### Chrome Extension
-
-You can also use Sosumi from a community-contributed 
-[Chrome extension](https://chromewebstore.google.com/detail/donffakeimppgoehccpfhlchmbfdmfpj?utm_source=item-share-cb),
-which adds a "Copy sosumi Link" button 
-to Apple Developer documentation pages.
-[Source code](https://github.com/FromAtom/Link-Generator-for-sosumi.ai) is available on GitHub.
 
 ## Self-Hosting
 
 This project is designed to be easily run on your own machine
 or deployed to a hosting provider.
 
-Sosumi.ai is currently hosted by 
+docsapi is currently hosted by 
 [Cloudflare Workers](https://workers.cloudflare.com).
 
 ### Prerequisites

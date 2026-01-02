@@ -8,6 +8,7 @@ export const docsetTypes = [
   "rustdoc",
   "godoc",
   "pdoc",
+  "html",
   "generic",
 ] as const
 

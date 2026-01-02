@@ -4,32 +4,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>docsapi.xo.vg- Apple Docs for LLMs</title>
+    <title>docsapi - Documentation API for LLMs</title>
     <meta name="description"
-        content="docsapi.xo.vg provides dev documentation in an AI-readable format by converting JavaScript-rendered pages into Markdown.">
-    <meta name="author" content="example-git">
+        content="docsapi provides documentation from common docset generators in an AI-readable format by converting pages into Markdown.">
+    <meta name="author" content="docsapi">
     <meta name="robots" content="index, follow">
 
     <link rel="canonical" href="https://docsapi.xo.vg/">
 
-    <meta property="og:title" content="docsapi.xo.vg - Docs for LLMs">
+    <meta property="og:title" content="docsapi - Documentation API for LLMs">
     <meta property="og:description"
-        content="docsapi.xo.vg provides documentation in an AI-readable format by converting JavaScript-rendered pages into Markdown.">
+        content="docsapi provides documentation from common docset generators in an AI-readable format by converting pages into Markdown.">
     <meta property="og:url" content="https://docsapi.xo.vg/">
-    <meta property="og:site_name" content="docsapi.xo.vg">
+    <meta property="og:site_name" content="docsapi">
     <meta property="og:type" content="website">
 
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="docsapi.xo.vg- Apple Docs for LLMs">
+    <meta name="twitter:title" content="docsapi - Documentation API for LLMs">
     <meta name="twitter:description"
-        content="docsapi.xo.vgprovides Apple Developer documentation in an AI-readable format by converting JavaScript-rendered pages into Markdown.">
+        content="docsapi provides documentation from common docset generators in an AI-readable format by converting pages into Markdown.">
 
     <meta name="theme-color" content="#d68d6e" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#ec9b7f" media="(prefers-color-scheme: dark)">
 
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="docsapi.xo.vg">
+    <meta name="apple-mobile-web-app-title" content="docsapi">
 
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="alternate icon" href="/favicon.ico">
@@ -533,7 +533,7 @@
 <body>
     <header>
         <h1>
-            <a href="/" accesskey="1">docsapi.xo.vg</a>
+            <a href="/" accesskey="1">docsapi</a>
 
             <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img"
                 aria-label="docsapi.xo.vglogo" title="You couldn't sue a face like this, right?">
@@ -545,7 +545,7 @@
             </svg>
         </h1>
         <p class="tagline">
-            <span>Making Apple docs AI-readable.</span>
+            <span>Making docs AI-readable.</span>
             <wbr />
             <span>So sue me.</span>
             <br />
@@ -555,23 +555,19 @@
 
     <main>
         <header>
-            <p>Ever notice Claude struggling to write Swift code? It might not be their fault!</p>
+            <p>Need structured docs for an LLM? docsapi turns doc sites into clean Markdown.</p>
             <p>
-                Apple Developer docs are locked behind JavaScript,
-                making them invisible to most LLMs.
-                If they try to fetch it, all they see is
-                <q>This page requires JavaScript. Please turn on JavaScript in your browser and refresh the page to view
-                    its content.</q>
-                <br />
+                Many documentation sites are JavaScript-heavy or fragmented across generators.
+                docsapi fetches the page, extracts the content, and returns Markdown.
             </p>
             <p>
-                This service translates Apple Developer documentation, Human Interface Guidelines, and common doc sites into AI-friendly Markdown.
+                Apple Docs are supported as a docset type, alongside common generators like MkDocs, Sphinx, Docusaurus, TypeDoc, and more.
             </p>
         </header>
 
         <section id="http">
             <header>
-                <h2>HTTP Usage</h2>
+                <h2>Apple Docs HTTP API (docset: apple)</h2>
                 <p>Replace <code>developer.apple.com</code> with <code>docsapi.xo.vg</code>:</p>
 
                 <dl>
@@ -640,7 +636,7 @@
                                     <li>Enter the following configuration:</li>
                                 </ol>
                                 <pre><code class="mcp-config"><span class="dimmed"><span class="punctuation">{</span></span>
-<span class="dimmed">  <span class="key">"servers"</span><span class="punctuation">:</span> <span class="punctuation">{</span></span>  <span class="sosumi-entry">    <span class="key">"sosumi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
+<span class="dimmed">  <span class="key">"servers"</span><span class="punctuation">:</span> <span class="punctuation">{</span></span>  <span class="sosumi-entry">    <span class="key">"docsapi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
       <span class="key">"type"</span><span class="punctuation">:</span> <span class="string">"http"</span><span class="punctuation">,</span>
       <span class="key">"url"</span><span class="punctuation">:</span> <span class="string">"https://docsapi.xo.vg/mcp"</span>
     <span class="punctuation">}</span></span><span class="dimmed">  <span class="punctuation">}</span></span>
@@ -651,17 +647,17 @@
 
                             <div class="tab-pane" id="cursor-tab">
                                 <h3>Cursor</h3>
-                                <p>Click the button below to automatically install the sosumi MCP server:</p>
+                                <p>Click the button below to automatically install the docsapi MCP server:</p>
 
                                 <a class="install-button"
-                                    href="cursor://anysphere.cursor-deeplink/mcp/install?name=sosumi&config=eyJ0eXBlIjoiaHR0cCIsInVybCI6Imh0dHBzOi8vc29zdW1pLmFpL21jcCJ9">
+                                    href="cursor://anysphere.cursor-deeplink/mcp/install?name=docsapi&config=eyJ0eXBlIjoiaHR0cCIsInVybCI6Imh0dHBzOi8vZG9jc2FwaS54by52Zy9tY3AifQ">
                                     <picture>
                                         <source srcset="https://cursor.com/deeplink/mcp-install-light.svg"
                                             media="(prefers-color-scheme: light)">
                                         <source srcset="https://cursor.com/deeplink/mcp-install-dark.svg"
                                             media="(prefers-color-scheme: dark)">
                                         <img src="https://cursor.com/deeplink/mcp-install-dark.svg"
-                                            alt="Add sosumi MCP server to Cursor" height="32" />
+                                            alt="Add docsapi MCP server to Cursor" height="32" />
                                     </picture>
                                 </a>
 
@@ -675,7 +671,7 @@
                                     configuration:</p>
 
                                 <pre><code class="mcp-config"><span class="dimmed"><span class="punctuation">{</span></span>
-<span class="dimmed">  <span class="key">"servers"</span><span class="punctuation">:</span> <span class="punctuation">{</span></span>  <span class="sosumi-entry">    <span class="key">"sosumi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
+<span class="dimmed">  <span class="key">"servers"</span><span class="punctuation">:</span> <span class="punctuation">{</span></span>  <span class="sosumi-entry">    <span class="key">"docsapi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
       <span class="key">"type"</span><span class="punctuation">:</span> <span class="string">"http"</span><span class="punctuation">,</span>
       <span class="key">"url"</span><span class="punctuation">:</span> <span class="string">"https://docsapi.xo.vg/mcp"</span>
     <span class="punctuation">}</span></span><span class="dimmed">  <span class="punctuation">}</span></span>
@@ -692,7 +688,7 @@
                                     <li>Open <strong>Claude Desktop</strong></li>
                                     <li>Go to <strong>Settings → Connectors</strong></li>
                                     <li>Click <strong>"Add custom connector"</strong></li>
-                                    <li>Set <strong>"Name"</strong> to <var>sosumi</var></li>
+                                    <li>Set <strong>"Name"</strong> to <var>docsapi</var></li>
                                     <li>Set <strong>"Remote MCP server URL"</strong> to
                                         <var>https://docsapi.xo.vg/mcp</var>
                                     </li>
@@ -707,7 +703,7 @@
                             <div class="tab-pane" id="claude-code-tab">
                                 <h3>Claude Code</h3>
                                 <p>Run the following command in your terminal:</p>
-                                <pre><code>claude mcp add --transport http sosumi https://docsapi.xo.vg/mcp</code></pre>
+                                <pre><code>claude mcp add --transport http docsapi https://docsapi.xo.vg/mcp</code></pre>
                                 <p>For more information, see the
                                     <a href="https://docs.anthropic.com/en/docs/claude-code/mcp"
                                         rel="noopener noreferrer">Claude Code MCP documentation</a>.
@@ -716,7 +712,7 @@
 
                             <div class="tab-pane" id="other-tab">
                                 <h3>Other MCP Clients</h3>
-                                <p>Sosumi's MCP server supports Streamable HTTP and Server-Sent Events (SSE) transport.
+                                <p>docsapi's MCP server supports Streamable HTTP and Server-Sent Events (SSE) transport.
                                     If your client supports either of these,
                                     configure it to connect directly to <code>https://docsapi.xo.vg/mcp</code>.</p>
 
@@ -725,7 +721,7 @@
 
                                 <pre><code class="mcp-config"><span class="dimmed"><span class="punctuation">{</span></span>
 <span class="dimmed">  <span class="key">"mcpServers"</span><span class="punctuation">:</span> <span class="punctuation">{</span></span>
-<span class="sosumi-entry">    <span class="key">"sosumi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
+<span class="sosumi-entry">    <span class="key">"docsapi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
       <span class="key">"command"</span><span class="punctuation">:</span> <span class="string">"npx"</span><span class="punctuation">,</span>
       <span class="key">"args"</span><span class="punctuation">:</span> <span class="punctuation">[</span>
         <span class="string">"-y"</span><span class="punctuation">,</span>
@@ -814,7 +810,7 @@
             </p>
             <pre><code class="mcp-config"><span class="dimmed"><span class="punctuation">{</span></span>
 <span class="dimmed">  <span class="key">"mcpServers"</span><span class="punctuation">:</span> <span class="punctuation">{</span></span>
-<span class="sosumi-entry">    <span class="key">"sosumi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
+<span class="sosumi-entry">    <span class="key">"docsapi"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
       <span class="key">"command"</span><span class="punctuation">:</span> <span class="string">"npx"</span><span class="punctuation">,</span>
       <span class="key">"args"</span><span class="punctuation">:</span> <span class="punctuation">[</span>
         <span class="string">"-y"</span><span class="punctuation">,</span>
@@ -874,7 +870,7 @@
 
         <aside>
             <figure id="haiku" lang="ja"
-                title="Sosumi: With plain ink I write / Apple's wisdom to machines— / Bridge-building autumn">
+                title="docsapi: With plain ink I write / Docs for machines— / Bridge-building autumn">
                 <span>素墨で書く</span>
                 <span>林檎の知恵を機械へ</span>
                 <span>橋渡す秋</span>

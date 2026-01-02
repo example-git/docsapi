@@ -12,6 +12,7 @@ const selectorsByType: Record<DocsetType, string[]> = {
   rustdoc: ["main", "#main-content", ".docblock"],
   godoc: ["main", "#pkg-overview", "#pkg-index"],
   pdoc: ["main", "#content", ".pdoc"],
+  html: ["body"],
   generic: ["article", "main", "div[role='main']", "#content", ".content"],
 }
 

@@ -110,15 +110,17 @@ export async function fetchDocumentationMarkdown(
   const { title, contentHtml } = extractDocContent(html, detected)
 
   let markdown = htmlToMarkdown(contentHtml)
+  let docsetType: DocsetType = detected
   if (!markdown) {
     markdown = htmlToMarkdown(html)
+    docsetType = "html"
   }
 
   if (title && !markdown.startsWith(`# ${title}`)) {
     markdown = `# ${title}\n\n${markdown}`
   }
 
-  return { markdown, url: fetchUrl, docsetType: detected }
+  return { markdown, url: fetchUrl, docsetType }
 }
 
 function stripHtmlExtension(url: string): string {
