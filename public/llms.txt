@@ -1,98 +1,37 @@
-# sosumi.ai - Apple Docs for LLMs
+# docsapi
 
-Ever notice Claude struggling to write Swift code?
-It might not be their fault!
+docsapi is a fork of [sosumi.ai](https://github.com/nshipster/sosumi.ai). It focuses on a generic documentation API and MCP tools for common docset generators, with Apple Docs supported as a docset type.
 
-Apple Developer docs are locked behind JavaScript,
-making them invisible to most LLMs.
-If they try to fetch it, all they see is:
-> This page requires JavaScript.
-> Please turn on JavaScript in your browser and refresh the page to view its content.
+The hosted instance for this fork is `https://docsapi.xo.vg`.
 
-This service translates Apple Developer documentation pages into AI-friendly Markdown.
+## Usage
 
-## HTTP Usage
+### Apple Docs via /api (docset: apple)
 
-Replace `developer.apple.com` with `sosumi.ai`:
+Fetch Apple docs by appending the raw URL to `/api/`:
 
-**Original:**
-https://developer.apple.com/documentation/swift/array
-
-**AI-readable:**
-https://sosumi.ai/documentation/swift/array
-
-### Examples
-
-**Developer Documentation:**
-- Swift: https://sosumi.ai/documentation/swift
-- SwiftUI: https://sosumi.ai/documentation/swiftui
-- Human Interface Guidelines: https://sosumi.ai/design/human-interface-guidelines
-
-## MCP Usage
-
-Connect your MCP client to `https://sosumi.ai/mcp`:
-
-### GitHub Copilot for Xcode
-
-1. Open **GitHub Copilot for Xcode** and go to **Settings…**
-2. Select the **MCP** tab
-3. Click **Edit Config**
-4. Enter the following configuration:
-
-```json
-{
-  "servers": {
-    "sosumi": {
-      "type": "http",
-      "url": "https://sosumi.ai/mcp"
-    }
-  }
-}
+```
+https://docsapi.xo.vg/api/https://developer.apple.com/documentation/swift/array
 ```
 
-### Cursor
+This works for API reference docs and Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) (HIG).
 
-Open this deep link to automatically install the sosumi MCP server:
+### Generic Docs API
 
-[Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=sosumi&config=eyJ0eXBlIjoiaHR0cCIsInVybCI6Imh0dHBzOi8vc29zdW1pLmFpL21jcCJ9)
+You can also fetch Markdown for any doc site by appending the raw URL to `/api/`:
 
-### VSCode
-
-Create a `.vscode/mcp.json` file in your workspace and enter the following configuration:
-
-```json
-{
-  "servers": {
-    "sosumi": {
-      "type": "http",
-      "url": "https://sosumi.ai/mcp"
-    }
-  }
-}
+```
+https://docsapi.xo.vg/api/https://docs.rs/serde/latest/serde/
 ```
 
-### Claude Desktop
+Set `Accept: application/json` to receive a JSON response with `{ url, content }`.
+Inputs ending in `.html` are normalized to the extension-less path.
 
-1. Open **Claude Desktop**
-2. Go to **Settings → Connectors**
-3. Click **"Add custom connector"**
-4. Set **"Name"** to `"sosumi"`
-5. Set **"Remote MCP server URL"** to `"https://sosumi.ai/mcp"`
-6. Click "Add"
+### MCP Integration (docsapi)
 
-### Claude Code
-
-Run the following command in your terminal:
-
-```shell
-claude mcp add --transport http sosumi https://sosumi.ai/mcp
-```
-
-### Other
-
-Sosumi's MCP server supports Streamable HTTP and Server-Sent Events (SSE) transport.
-**If your client supports either of these,
-configure it to connect directly to `https://sosumi.ai/mcp`.**
+docsapi's MCP server supports Streamable HTTP and Server-Sent Events (SSE) transport. 
+If your client supports either of these, 
+configure it to connect directly to `https://docsapi.xo.vg/mcp`.
 
 Otherwise,
 you can run this command to proxy over stdio:
@@ -100,63 +39,135 @@ you can run this command to proxy over stdio:
 ```json
 {
   "mcpServers": {
-    "sosumi": {
+    "docsapi": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://sosumi.ai/mcp"]
+      "args": ["-y", "mcp-remote", "https://docsapi.xo.vg/mcp"]
     }
   }
 }
 ```
 
-### Available Resources
+See `https://docsapi.xo.vg/#clients` for client-specific instructions.
 
-- `doc://{path}` - Apple Developer documentation and Human Interface Guidelines in Markdown format
-  - Example: `doc://swift/array` returns Swift Array documentation
-  - Example: `doc://design/human-interface-guidelines/foundations/color` returns HIG Color guidelines
+#### Available Resources
 
-### Available Tools
+- `doc://{url}` - Documentation at a full URL, rendered as Markdown
+  - Example: `doc://https://developer.apple.com/documentation/swift/array`
+  - Example: `doc://https://docs.rs/serde/latest/serde/`
+
+#### Available Tools
 
 - `searchAppleDocumentation` - Searches Apple Developer documentation
   - Parameters: `query` (string)
-  - Returns structured results with titles,
-    URLs,
-    descriptions,
-    breadcrumbs,
-    and tags
+  - Returns structured results with titles, URLs, descriptions, breadcrumbs, and tags
 
 - `fetchAppleDocumentation` - Fetches Apple Developer documentation and Human Interface Guidelines by path
-  - Parameters: `path` (string) - Documentation path (e.g., '/documentation/swift', 'design/human-interface-guidelines/foundations/color')
+  - Parameters: `path` (string) - Documentation path (e.g., '/documentation/swift', 'swiftui/view', 'design/human-interface-guidelines/foundations/color')
   - Returns content as Markdown
 
-## Troubleshooting
+- `fetchDocumentation` - Fetches documentation from any base URL with docset auto-detection
+  - Parameters: `baseUrl` (string), `path` (string, optional), `docsetType` (string, optional)
+  - Example: `baseUrl: "https://docs.rs"`, `path: "/serde/latest/serde/"`
+  - Example: `baseUrl: "https://docs.python.org/3"`, `path: "/library/asyncio.html"`
+  - Example: `baseUrl: "https://developer.apple.com"`, `path: "/documentation/swift/array"`, `docsetType: "apple"`
+  - Returns content as Markdown, plus structured metadata (`docsetType`)
 
-If you're experiencing connection timeouts or network issues with the MCP server,
-you may need to configure a proxy.
-This is particularly common in corporate environments
-or regions with restricted internet access.
+- `searchDocumentation` - Basic search for common docset generators
+  - Parameters: `baseUrl` (string), `query` (string), `docsetType` (string, optional)
+  - Returns structured results with titles and URLs
 
-Configure your MCP client to use a proxy by adding environment variables:
 
-```json
-{
-  "mcpServers": {
-    "sosumi": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://sosumi.ai/mcp"],
-      "env": {
-        "HTTP_PROXY": "http://proxy.example.com:8080",
-        "HTTPS_PROXY": "http://proxy.example.com:8080"
-      }
-    }
-  }
-}
+## Self-Hosting
+
+This project is designed to be easily run on your own machine
+or deployed to a hosting provider.
+
+docsapi is currently hosted by 
+[Cloudflare Workers](https://workers.cloudflare.com).
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Quick Start
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/example-git/docsapi.xo.vg.git
+   cd docsapi.xo.vg
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Start development server:**
+   ```bash
+   npm run dev
+   ```
+
+Once the application is up and running, press the <kbd>b</kbd>
+to open the URL in your browser.
+
+To configure MCP clients to use your development server, 
+replace `docsapi.xo.vg` with the local server address
+(`http://localhost:8787` by default).
+
+> [!NOTE]  
+> The application is built with Hono, 
+> making it compatible with various runtimes.
+>
+> See the [Hono docs](https://hono.dev/docs/getting-started/basic)
+> for more information about deploying to different platforms.
+
+## Development
+
+### Testing
+
+This project uses [vitest](https://vitest.dev)
+for  unit and integration testing.
+
+```bash
+npm run test          # Run tests
+npm run test:ui       # Run tests with UI
+npm run test:run      # Run tests once
 ```
 
-Replace `proxy.example.com:8080` with your actual proxy server details.
-For authenticated proxies, use the format:
-`http://username:password@proxy.example.com:8080`
+### Code Quality
 
-## About
+This project uses [Biome](https://biomejs.dev/) 
+for code formatting, linting, and import organization.
+
+- `npm run format` - Format all code files
+- `npm run lint` - Lint and fix code issues
+- `npm run check` - Format, lint, and organize imports (recommended)
+- `npm run check:ci` - Check code without making changes (for CI)
+
+### Editor Integration
+
+For the best development experience, install the Biome extension for your editor:
+
+- [VSCode](https://marketplace.visualstudio.com/items?itemName=biomejs.biome)
+- [Vim/Neovim](https://github.com/biomejs/biome/tree/main/editors/vim)
+- [Emacs](https://github.com/biomejs/biome/tree/main/editors/emacs)
+
+### Cloudflare Workers
+
+Whenever you update your `wrangler.toml` or change your Worker bindings, 
+be sure to re-run:
+
+```bash
+npm run cf-typegen
+```
+
+## License
+
+This project is available under the MIT license.
+See the LICENSE file for more info.
+
+## Legal
 
 This is an unofficial,
 independent project and is not affiliated with or endorsed by Apple Inc.
@@ -178,4 +189,4 @@ Your use of this service must comply with Apple's Terms of Use and applicable la
 You are solely responsible for how you access and use Apple's content through this tool.
 Do not use this service to circumvent technical measures or for redistribution.
 
-**Contact:** info@sosumi.ai
+**Contact:** <info@sosumi.ai>
