@@ -1,4 +1,4 @@
-import { getRandomUserAgent } from "../fetch"
+import { fetchWithRateLimit, getRandomUserAgent } from "../fetch"
 import type { DocsetType } from "./types"
 
 const searchIndexPaths = [
@@ -35,7 +35,7 @@ function toAbsoluteUrl(baseUrl: string, href: string): string {
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, {
+  const response = await fetchWithRateLimit(url, {
     headers: {
       "User-Agent": getRandomUserAgent(),
       Accept: "application/json, text/plain, text/html",

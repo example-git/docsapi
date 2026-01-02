@@ -13,10 +13,24 @@ const selectorsByType: Record<DocsetType, string[]> = {
   godoc: ["main", "#pkg-overview", "#pkg-index"],
   pdoc: ["main", "#content", ".pdoc"],
   html: ["body"],
-  generic: ["article", "main", "div[role='main']", "#content", ".content"],
+  generic: [
+    "article",
+    "main",
+    ".prose",
+    ".markdown-body",
+    ".docs-content",
+    ".doc-content",
+    ".content-area",
+    ".page-content",
+    "div[role='main']",
+    "#content",
+    ".content",
+  ],
 }
 
-const fallbackSelectors = ["article", "main", "div[role='main']", "#content", ".content", "body"]
+const fallbackSelectors = ["main", "article", "div[role='main']", "#content", ".content", "body"]
+
+const MIN_CONTENT_LENGTH = 200
 
 const stripSelectors = [
   "nav",
@@ -25,6 +39,32 @@ const stripSelectors = [
   "aside",
   "form",
   "button",
+  "[role='navigation']",
+  ".navbar",
+  ".site-header",
+  ".site-footer",
+  ".topbar",
+  ".announcement",
+  ".alert",
+  ".banner",
+  ".cookie",
+  ".search",
+  ".search-container",
+  ".searchbox",
+  ".skip-link",
+  ".toc-nav",
+  ".toc-container",
+  ".toc-sidebar",
+  ".docs-toc",
+  ".docs-toc-container",
+  ".docs-header",
+  ".site-nav",
+  ".site-navigation",
+  ".docs-nav",
+  ".docs-sidebar",
+  ".doc-sidebar",
+  ".doc-nav",
+  ".sidebar-nav",
   "script",
   "style",
   "noscript",
@@ -50,22 +90,20 @@ function removeUnwanted(root: Element): void {
 }
 
 function findMainContent(document: Document, docsetType: DocsetType): Element | null {
-  const selectors = selectorsByType[docsetType] ?? []
+  const selectors = [...(selectorsByType[docsetType] ?? []), ...fallbackSelectors]
+
   for (const selector of selectors) {
     const node = document.querySelector(selector)
-    if (node) {
-      return node
+    if (!node) continue
+    const clone = node.cloneNode(true) as Element
+    removeUnwanted(clone)
+    const text = clone.textContent?.trim() ?? ""
+    if (text.length >= MIN_CONTENT_LENGTH) {
+      return clone
     }
   }
 
-  for (const selector of fallbackSelectors) {
-    const node = document.querySelector(selector)
-    if (node) {
-      return node
-    }
-  }
-
-  return document.body
+  return document.body ? (document.body.cloneNode(true) as Element) : null
 }
 
 export function extractDocContent(html: string, docsetType: DocsetType): {
@@ -81,8 +119,12 @@ export function extractDocContent(html: string, docsetType: DocsetType): {
 
   removeUnwanted(root)
 
-  const title =
-    document.querySelector("h1")?.textContent?.trim() ?? document.title?.trim() ?? ""
+  const titleElement = root.querySelector("h1") ?? document.querySelector("h1")
+  const title = titleElement?.textContent?.trim() ?? document.title?.trim() ?? ""
+
+  if (titleElement && titleElement.textContent?.trim() === title) {
+    titleElement.remove()
+  }
 
   return {
     title,

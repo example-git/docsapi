@@ -2,7 +2,7 @@
  * Human Interface Guidelines (HIG) fetching functionality
  */
 
-import { getRandomUserAgent, NotFoundError } from "../fetch"
+import { fetchWithRateLimit, getRandomUserAgent, NotFoundError } from "../fetch"
 import type { HIGPageJSON, HIGTableOfContents } from "./types"
 
 // ============================================================================
@@ -26,7 +26,7 @@ export async function fetchHIGTableOfContents(): Promise<HIGTableOfContents> {
 
   const userAgent = getRandomUserAgent()
 
-  const response = await fetch(tocUrl, {
+  const response = await fetchWithRateLimit(tocUrl, {
     headers: {
       "User-Agent": userAgent,
       Accept: "application/json",
@@ -61,7 +61,7 @@ export async function fetchHIGPageData(path: string): Promise<HIGPageJSON> {
 
   const userAgent = getRandomUserAgent()
 
-  const response = await fetch(jsonUrl, {
+  const response = await fetchWithRateLimit(jsonUrl, {
     headers: {
       "User-Agent": userAgent,
       Accept: "application/json",

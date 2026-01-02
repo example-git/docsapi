@@ -8,6 +8,26 @@ import { docsetTypes } from "./docset/types"
 import { fetchHIGPageData, renderHIGFromJSON } from "./hig"
 import { generateAppleDocUrl, normalizeDocumentationPath } from "./url"
 
+const MCP_TOOL_TIMEOUT_MS = 20000
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
+}
+
 export function createMcpServer() {
   const server = new McpServer({
     name: "docsapi",
@@ -26,7 +46,11 @@ export function createMcpServer() {
       try {
         const decodedUrl = decodeURIComponent(url.toString())
         const targetUrl = decodedUrl.startsWith("http") ? decodedUrl : `https://${decodedUrl}`
-        const { markdown } = await fetchDocumentationMarkdown({ baseUrl: targetUrl })
+        const { markdown } = await withTimeout(
+          fetchDocumentationMarkdown({ baseUrl: targetUrl }),
+          MCP_TOOL_TIMEOUT_MS,
+          "MCP resource fetch",
+        )
 
         if (!markdown || markdown.trim().length < 100) {
           throw new Error("Insufficient content in documentation")
@@ -93,7 +117,11 @@ export function createMcpServer() {
     },
     async ({ query }) => {
       try {
-        const searchResponse = await searchAppleDeveloperDocs(query)
+        const searchResponse = await withTimeout(
+          searchAppleDeveloperDocs(query),
+          MCP_TOOL_TIMEOUT_MS,
+          "Apple search",
+        )
 
         const structuredContent = {
           query: searchResponse.query,
@@ -257,6 +285,12 @@ export function createMcpServer() {
           .optional()
           .describe("Optional docset hint (e.g., 'docusaurus', 'mkdocs', 'sphinx')"),
       },
+      outputSchema: {
+        url: z.string().describe("Resolved URL that was fetched"),
+        docsetType: z.enum(docsetTypes).describe("Detected or provided docset type"),
+        markdown: z.string().describe("Documentation content rendered as Markdown"),
+        error: z.string().optional().describe("Error message when the fetch fails"),
+      },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -266,11 +300,15 @@ export function createMcpServer() {
     },
     async ({ baseUrl, path, docsetType }) => {
       try {
-        const { markdown, url, docsetType: resolvedType } = await fetchDocumentationMarkdown({
-          baseUrl,
-          path,
-          docsetType,
-        })
+        const { markdown, url, docsetType: resolvedType } = await withTimeout(
+          fetchDocumentationMarkdown({
+            baseUrl,
+            path,
+            docsetType,
+          }),
+          MCP_TOOL_TIMEOUT_MS,
+          "Documentation fetch",
+        )
 
         if (!markdown || markdown.trim().length < 100) {
           throw new Error("Insufficient content in documentation")
@@ -286,6 +324,7 @@ export function createMcpServer() {
           structuredContent: {
             url,
             docsetType: resolvedType,
+            markdown,
           },
         }
       } catch (error) {
@@ -301,6 +340,8 @@ export function createMcpServer() {
           structuredContent: {
             url: path ? `${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}` : baseUrl,
             docsetType: docsetType ?? "generic",
+            markdown: "",
+            error: errorMessage,
           },
         }
       }
@@ -340,7 +381,11 @@ export function createMcpServer() {
     },
     async ({ baseUrl, query, docsetType }) => {
       try {
-        const results = await searchDocumentation(baseUrl, query, docsetType)
+        const results = await withTimeout(
+          searchDocumentation(baseUrl, query, docsetType),
+          MCP_TOOL_TIMEOUT_MS,
+          "Documentation search",
+        )
         return {
           content: [
             {

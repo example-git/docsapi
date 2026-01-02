@@ -1,5 +1,5 @@
-import { getRandomUserAgent } from "../fetch"
-import { fetchHIGPageData, renderHIGFromJSON } from "../hig"
+import { fetchWithRateLimit, getRandomUserAgent } from "../fetch"
+import { fetchHIGPageData, fetchHIGTableOfContents, findHIGItemByPath, renderHIGFromJSON } from "../hig"
 import { fetchJSONData, renderFromJSON } from "../reference"
 import { generateAppleDocUrl, normalizeDocumentationPath } from "../url"
 import { detectDocsetType } from "./detect"
@@ -50,7 +50,7 @@ function resolveTargetUrl(baseUrl: string, path?: string): string {
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  const response = await fetch(url, {
+  const response = await fetchWithRateLimit(url, {
     headers: {
       "User-Agent": getRandomUserAgent(),
       Accept: "text/html",
@@ -70,34 +70,73 @@ export async function fetchDocumentationMarkdown(
   const resolvedUrl = resolveTargetUrl(request.baseUrl, request.path)
   const targetUrl = stripHtmlExtension(resolvedUrl)
   const isApple = request.docsetType === "apple" || isAppleHost(targetUrl)
+  let genericFallbackUrl = targetUrl
+
+  let forceGeneric = false
 
   if (isApple) {
-    const parsedUrl = new URL(targetUrl)
-    const pathname = parsedUrl.pathname
+    try {
+      const parsedUrl = new URL(targetUrl)
+      const pathname = parsedUrl.pathname
 
-    if (isHigPath(pathname)) {
-      const higPath = pathname.replace(/^\/?(design\/human-interface-guidelines\/)/, "")
-      const sourceUrl = `https://developer.apple.com/design/human-interface-guidelines/${higPath}`
-      const jsonData = await fetchHIGPageData(higPath)
-      const markdown = await renderHIGFromJSON(jsonData, sourceUrl)
+      if (isHigPath(pathname)) {
+        const higPath = pathname.replace(/^\/?(design\/human-interface-guidelines\/)/, "")
+        const sourceUrl = `https://developer.apple.com/design/human-interface-guidelines/${higPath}`
+        try {
+          const jsonData = await fetchHIGPageData(higPath)
+          const markdown = await renderHIGFromJSON(jsonData, sourceUrl)
+          return { markdown, url: sourceUrl, docsetType: "apple" }
+        } catch (error) {
+          const targetSlug = higPath.split("/").pop() ?? higPath
+          try {
+            const toc = await fetchHIGTableOfContents()
+            const matched =
+              findHIGItemByPath(toc, higPath) ??
+              findHIGItemByPath(toc, targetSlug) ??
+              toc.interfaceLanguages.swift
+                .flatMap((item) => item.children ?? [])
+                .find((item) => item.path?.endsWith(`/${targetSlug}`))
+            if (matched?.path) {
+              const normalizedPath = matched.path.replace(/^\/design\/human-interface-guidelines\//, "")
+              genericFallbackUrl = `https://developer.apple.com${matched.path}`
+              const jsonData = await fetchHIGPageData(normalizedPath)
+              const markdown = await renderHIGFromJSON(jsonData, genericFallbackUrl)
+              return { markdown, url: genericFallbackUrl, docsetType: "apple" }
+            }
+          } catch {
+            // Fall back to generic fetch below.
+          }
 
-      return { markdown, url: sourceUrl, docsetType: "apple" }
+          throw error
+        }
+      }
+
+      const normalizedPath = normalizeDocumentationPath(pathname)
+      const appleUrl = generateAppleDocUrl(normalizedPath)
+      const jsonData = await fetchJSONData(normalizedPath)
+      const markdown = await renderFromJSON(jsonData, appleUrl)
+
+      return { markdown, url: appleUrl, docsetType: "apple" }
+    } catch {
+      forceGeneric = true
     }
-
-    const normalizedPath = normalizeDocumentationPath(pathname)
-    const appleUrl = generateAppleDocUrl(normalizedPath)
-    const jsonData = await fetchJSONData(normalizedPath)
-    const markdown = await renderFromJSON(jsonData, appleUrl)
-
-    return { markdown, url: appleUrl, docsetType: "apple" }
   }
 
   let html: string
-  let fetchUrl = targetUrl
+  let fetchUrl = genericFallbackUrl
 
   try {
     html = await fetchHtml(fetchUrl)
   } catch (error) {
+    if (!fetchUrl.endsWith("/") && !/\.[a-z0-9]+$/i.test(fetchUrl)) {
+      const withSlash = `${fetchUrl}/`
+      try {
+        html = await fetchHtml(withSlash)
+        fetchUrl = withSlash
+      } catch {
+        // fall through to other fallbacks
+      }
+    }
     if (resolvedUrl !== targetUrl) {
       fetchUrl = resolvedUrl
       html = await fetchHtml(fetchUrl)
@@ -106,7 +145,7 @@ export async function fetchDocumentationMarkdown(
     }
   }
 
-  const detected = request.docsetType ?? detectDocsetType(html, fetchUrl)
+  const detected = forceGeneric ? "generic" : request.docsetType ?? detectDocsetType(html, fetchUrl)
   const { title, contentHtml } = extractDocContent(html, detected)
 
   let markdown = htmlToMarkdown(contentHtml)

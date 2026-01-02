@@ -1,3 +1,5 @@
+import { fetchWithRateLimit } from "./fetch"
+
 export interface SearchResult {
   title: string
   url: string
@@ -136,7 +138,7 @@ export async function searchAppleDeveloperDocs(query: string): Promise<SearchRes
   const searchUrl = `https://developer.apple.com/search/?q=${encodeURIComponent(query)}`
 
   try {
-    const response = await fetch(searchUrl, {
+    const response = await fetchWithRateLimit(searchUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",

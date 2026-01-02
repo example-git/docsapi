@@ -2,7 +2,7 @@
  * Apple Developer Reference documentation fetching functionality
  */
 
-import { getRandomUserAgent, NotFoundError } from "../fetch"
+import { fetchWithRateLimit, getRandomUserAgent, NotFoundError } from "../fetch"
 import { normalizeDocumentationPath } from "../url"
 import type { AppleDocJSON } from "./types"
 
@@ -32,7 +32,7 @@ export async function fetchJSONData(path: string): Promise<AppleDocJSON> {
   // Generate a random Safari user agent with uniform selection
   const userAgent = getRandomUserAgent()
 
-  const response = await fetch(jsonUrl, {
+  const response = await fetchWithRateLimit(jsonUrl, {
     headers: {
       "User-Agent": userAgent,
       Accept: "application/json",

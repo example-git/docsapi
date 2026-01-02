@@ -5,6 +5,11 @@
 
 export class NotFoundError extends Error {}
 
+type RateLimitOptions = {
+  minIntervalMs?: number
+  timeoutMs?: number
+}
+
 const USER_AGENTS = [
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.2.20",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
@@ -33,6 +38,77 @@ const USER_AGENTS = [
   "Mozilla/5.0 (iPad; CPU OS 8_4_1 like Mac OS X) AppleWebKit/600.1.4 (KHTML, like Gecko) Version/8.0 Mobile/12H321 Safari/600.1.4",
   "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0_3 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/10.1 Mobile/15A432 Safari/602.1",
 ] as const
+
+const hostLocks = new Map<string, Promise<void>>()
+const hostLastRequestAt = new Map<string, number>()
+const DEFAULT_MIN_INTERVAL_MS = 300
+const DEFAULT_TIMEOUT_MS = 20000
+
+function getHostKey(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return "default"
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function acquireHost(host: string, minIntervalMs: number): Promise<() => void> {
+  const previous = hostLocks.get(host) ?? Promise.resolve()
+  let release!: () => void
+  const current = new Promise<void>((resolve) => {
+    release = resolve
+  })
+
+  const gated = previous.then(async () => {
+    const last = hostLastRequestAt.get(host) ?? 0
+    const elapsed = Date.now() - last
+    const waitFor = Math.max(0, minIntervalMs - elapsed)
+    if (waitFor > 0) {
+      await sleep(waitFor)
+    }
+    hostLastRequestAt.set(host, Date.now())
+  })
+
+  hostLocks.set(host, gated.then(() => current))
+
+  await gated
+  return release
+}
+
+export async function fetchWithRateLimit(
+  url: string,
+  init?: RequestInit,
+  options: RateLimitOptions = {},
+): Promise<Response> {
+  const host = getHostKey(url)
+  const release = await acquireHost(host, options.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS)
+  const controller = new AbortController()
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeoutId = setTimeout(() => controller.abort("Request timed out"), timeoutMs)
+
+  if (init?.signal) {
+    if (init.signal.aborted) {
+      controller.abort(init.signal.reason)
+    } else {
+      init.signal.addEventListener(
+        "abort",
+        () => controller.abort(init.signal?.reason ?? "Request aborted"),
+        { once: true },
+      )
+    }
+  }
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeoutId)
+    release()
+  }
+}
 
 /**
  * Get a random Safari user agent
