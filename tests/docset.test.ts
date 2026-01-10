@@ -3,7 +3,7 @@ import { fetchDocumentationMarkdown } from "../src/lib/docset"
 import { detectDocsetType } from "../src/lib/docset/detect"
 import { extractDocContent } from "../src/lib/docset/extract"
 import { htmlToMarkdown } from "../src/lib/docset/markdown"
-import { searchDocumentation } from "../src/lib/docset/search"
+import { searchDocumentation, searchDocumentationWithDiagnostics } from "../src/lib/docset/search"
 
 describe("Docset Helpers", () => {
   const originalFetch = global.fetch
@@ -65,6 +65,10 @@ describe("Docset Helpers", () => {
     const markdown = htmlToMarkdown("<h1>Title</h1><p>Hello <code>world</code>.</p>")
     expect(markdown).toContain("# Title")
     expect(markdown).toContain("Hello `world`.")
+  })
+
+  it("does not throw when converting malformed HTML", () => {
+    expect(() => htmlToMarkdown("<table><tr></tr></table>")).not.toThrow()
   })
 
   it("fetches docs and renders markdown from a base URL", async () => {
@@ -260,7 +264,7 @@ describe("Docset Helpers", () => {
   })
 
   it("searches sphinx indexes and derives the doc root from deep URLs", async () => {
-    const sphinxIndex = `Search.setIndex({"docnames":["intro","api"],"filenames":["intro.html","api.html"],"titles":["Intro","API Reference"],"terms":{"alpha":[0],"beta":[[1,2]]}});`
+    const sphinxIndex = `Search.setIndex({"docnames":["intro","api"],"filenames":["intro.html","api.html"],"titles":["Intro","API Reference"],"terms":{"alpha":[0],"beta":[[1,2]]}})`
 
     global.fetch = vi.fn().mockImplementation((url) => {
       const urlString = String(url)
@@ -311,5 +315,46 @@ describe("Docset Helpers", () => {
     const results = await searchDocumentation("https://docs.example.com", "intro")
     expect(results.length).toBe(1)
     expect(results[0].url).toBe("https://docs.example.com/guide/intro")
+  })
+
+  it("returns diagnostics when no searchable sources exist", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(new Response("Nope", { status: 404, statusText: "Not Found" }))
+
+    const { results, diagnostics } = await searchDocumentationWithDiagnostics(
+      "https://docs.example.com/no-index/",
+      "anything",
+    )
+
+    expect(results.length).toBe(0)
+    expect(diagnostics.fetchedSourceUrls.length).toBe(0)
+    expect(diagnostics.parsedSourceUrls.length).toBe(0)
+  })
+
+  it("returns diagnostics when sources are fetched but unparsable", async () => {
+    global.fetch = vi.fn().mockImplementation((url) => {
+      const urlString = String(url)
+      if (urlString.endsWith("search/search_index.json")) {
+        return Promise.resolve(
+          new Response("not json", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      }
+      return Promise.resolve(new Response("Nope", { status: 404, statusText: "Not Found" }))
+    })
+
+    const { results, diagnostics } = await searchDocumentationWithDiagnostics(
+      "https://docs.example.com/",
+      "anything",
+      "mkdocs",
+    )
+
+    expect(results.length).toBe(0)
+    expect(diagnostics.fetchedSourceUrls.length).toBeGreaterThan(0)
+    expect(diagnostics.parsedSourceUrls.length).toBe(0)
+    expect(diagnostics.parseErrors.length).toBeGreaterThan(0)
   })
 })

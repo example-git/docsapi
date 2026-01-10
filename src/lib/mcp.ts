@@ -2,10 +2,10 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { z } from "zod"
 
 import { fetchDocumentationMarkdown } from "./docset"
-import { searchDocumentation } from "./docset/search"
-import { searchAppleDeveloperDocs } from "./search"
+import { searchDocumentationWithDiagnostics } from "./docset/search"
 import { docsetTypes } from "./docset/types"
 import { fetchHIGPageData, renderHIGFromJSON } from "./hig"
+import { searchAppleDeveloperDocs } from "./search"
 import { generateAppleDocUrl, normalizeDocumentationPath } from "./url"
 
 const MCP_TOOL_TIMEOUT_MS = 20000
@@ -300,7 +300,11 @@ export function createMcpServer() {
     },
     async ({ baseUrl, path, docsetType }) => {
       try {
-        const { markdown, url, docsetType: resolvedType } = await withTimeout(
+        const {
+          markdown,
+          url,
+          docsetType: resolvedType,
+        } = await withTimeout(
           fetchDocumentationMarkdown({
             baseUrl,
             path,
@@ -381,19 +385,29 @@ export function createMcpServer() {
     },
     async ({ baseUrl, query, docsetType }) => {
       try {
-        const results = await withTimeout(
-          searchDocumentation(baseUrl, query, docsetType),
+        const { results, diagnostics } = await withTimeout(
+          searchDocumentationWithDiagnostics(baseUrl, query, docsetType),
           MCP_TOOL_TIMEOUT_MS,
           "Documentation search",
         )
+
+        const noFetchedSources = diagnostics.fetchedSourceUrls.length === 0
+        const noParsedSources = diagnostics.parsedSourceUrls.length === 0
+
+        const message =
+          results.length === 0
+            ? noFetchedSources
+              ? `No results: no searchable index/sitemap was found for "${baseUrl}".`
+              : noParsedSources
+                ? "No results: a search source was fetched but could not be parsed."
+                : `No results found for "${query}" (search index/sitemap was available).`
+            : `Found ${results.length} result(s) for "${query}".`
+
         return {
           content: [
             {
               type: "text" as const,
-              text:
-                results.length === 0
-                  ? `No results found for "${query}"`
-                  : `Found ${results.length} result(s) for "${query}".`,
+              text: message,
             },
           ],
           structuredContent: {

@@ -1,6 +1,15 @@
 import { fetchWithRateLimit, getRandomUserAgent } from "../fetch"
 import type { DocsetType } from "./types"
 
+export type DocumentationSearchDiagnostics = {
+  basesTried: string[]
+  indexUrlsTried: string[]
+  sitemapUrlsTried: string[]
+  fetchedSourceUrls: string[]
+  parsedSourceUrls: string[]
+  parseErrors: Array<{ url: string; error: string }>
+}
+
 const searchIndexPaths = [
   "search/search_index.json",
   "searchindex.json",
@@ -131,11 +140,21 @@ function parseMkDocsIndex(raw: string, baseUrl: string, query: string) {
 }
 
 function tokenizeQuery(query: string): string[] {
-  return query
-    .toLowerCase()
+  const normalized = query.toLowerCase().trim()
+  if (!normalized) return []
+
+  const baseTokens = normalized
     .split(/[^a-z0-9_-]+/g)
     .map((token) => token.trim())
     .filter(Boolean)
+
+  const extraTokens: string[] = []
+  for (const token of baseTokens) {
+    if (token.includes("_")) extraTokens.push(...token.split("_").filter(Boolean))
+    if (token.includes("-")) extraTokens.push(...token.split("-").filter(Boolean))
+  }
+
+  return dedupePreserveOrder([...baseTokens, ...extraTokens])
 }
 
 function extractSphinxDocIds(value: unknown): number[] {
@@ -157,7 +176,8 @@ function extractSphinxDocIds(value: unknown): number[] {
 
 function parseSphinxIndex(raw: string, baseUrl: string, query: string) {
   const match =
-    raw.match(/Search\.setIndex\((\{[\s\S]*\})\);/) ?? raw.match(/var\s+index\s*=\s*(\{[\s\S]*\});/)
+    raw.match(/Search\.setIndex\((\{[\s\S]*\})\)\s*;?/) ??
+    raw.match(/var\s+index\s*=\s*(\{[\s\S]*\})\s*;?/)
   if (!match) return []
 
   const json = match[1]
@@ -187,8 +207,11 @@ function parseSphinxIndex(raw: string, baseUrl: string, query: string) {
   for (const [index, title] of titles.entries()) {
     const titleLower = title?.toLowerCase() ?? ""
     const docnameLower = docnames[index]?.toLowerCase() ?? ""
-    if (titleLower.includes(query) || docnameLower.includes(query)) {
-      scores.set(index, (scores.get(index) ?? 0) + 3)
+    for (const token of tokens) {
+      if (token.length < 3) continue
+      if (titleLower.includes(token) || docnameLower.includes(token)) {
+        scores.set(index, (scores.get(index) ?? 0) + 1)
+      }
     }
   }
 
@@ -198,7 +221,13 @@ function parseSphinxIndex(raw: string, baseUrl: string, query: string) {
 
   return ranked
     .map(([index]) => {
-      const filename = filenames[index] ?? (docnames[index] ? `${docnames[index]}.html` : "")
+      const filenameRaw = filenames[index] ?? ""
+      const filename =
+        filenameRaw.endsWith(".rst") || filenameRaw.endsWith(".txt")
+          ? docnames[index]
+            ? `${docnames[index]}.html`
+            : filenameRaw.replace(/\.(rst|txt)$/i, ".html")
+          : filenameRaw || (docnames[index] ? `${docnames[index]}.html` : "")
       const url = filename ? toAbsoluteUrl(baseUrl, filename) : baseUrl
       const title = titles[index] ?? docnames[index] ?? url
       return { title, url, snippet: "", source: "sphinx" }
@@ -231,12 +260,39 @@ export async function searchDocumentation(
     source: string
   }>
 > {
+  const { results } = await searchDocumentationWithDiagnostics(baseUrl, query, docsetType)
+  return results
+}
+
+export async function searchDocumentationWithDiagnostics(
+  baseUrl: string,
+  query: string,
+  docsetType?: DocsetType,
+): Promise<{
+  results: Array<{
+    title: string
+    url: string
+    snippet: string
+    source: string
+  }>
+  diagnostics: DocumentationSearchDiagnostics
+}> {
   const normalizedQuery = normalizeQuery(query)
+  const diagnostics: DocumentationSearchDiagnostics = {
+    basesTried: [],
+    indexUrlsTried: [],
+    sitemapUrlsTried: [],
+    fetchedSourceUrls: [],
+    parsedSourceUrls: [],
+    parseErrors: [],
+  }
+
   if (!normalizedQuery) {
-    return []
+    return { results: [], diagnostics }
   }
 
   const bases = buildSearchBaseCandidates(baseUrl)
+  diagnostics.basesTried = [...bases]
   const pathsToTry =
     docsetType === "mkdocs"
       ? searchIndexPaths.filter((path) => path.endsWith(".json"))
@@ -248,34 +304,54 @@ export async function searchDocumentation(
     for (const path of pathsToTry) {
       try {
         const indexUrl = toAbsoluteUrl(base, path)
+        diagnostics.indexUrlsTried.push(indexUrl)
         const raw = await fetchText(indexUrl)
-        if (path.endsWith(".json") && (docsetType === "mkdocs" || docsetType === undefined)) {
-          const results = parseMkDocsIndex(raw, base, normalizedQuery)
-          if (results.length) {
-            return results
+        diagnostics.fetchedSourceUrls.push(indexUrl)
+        if (path.endsWith(".json")) {
+          try {
+            const results = parseMkDocsIndex(raw, base, normalizedQuery)
+            diagnostics.parsedSourceUrls.push(indexUrl)
+            if (results.length) {
+              return { results, diagnostics }
+            }
+          } catch (error) {
+            diagnostics.parseErrors.push({
+              url: indexUrl,
+              error: error instanceof Error ? error.message : "Unknown error",
+            })
           }
         }
-        if (path.endsWith(".js") && (docsetType === "sphinx" || docsetType === undefined)) {
-          const results = parseSphinxIndex(raw, base, normalizedQuery)
-          if (results.length) {
-            return results
+        if (path.endsWith(".js")) {
+          try {
+            const results = parseSphinxIndex(raw, base, normalizedQuery)
+            diagnostics.parsedSourceUrls.push(indexUrl)
+            if (results.length) {
+              return { results, diagnostics }
+            }
+          } catch (error) {
+            diagnostics.parseErrors.push({
+              url: indexUrl,
+              error: error instanceof Error ? error.message : "Unknown error",
+            })
           }
         }
       } catch {}
     }
   }
 
-  try {
-    for (const base of bases) {
-      const sitemap = await fetchText(toAbsoluteUrl(base, "sitemap.xml"))
-      const results = parseSitemap(sitemap, base, normalizedQuery)
+  for (const base of bases) {
+    try {
+      const sitemapUrl = toAbsoluteUrl(base, "sitemap.xml")
+      diagnostics.sitemapUrlsTried.push(sitemapUrl)
+      const raw = await fetchText(sitemapUrl)
+      diagnostics.fetchedSourceUrls.push(sitemapUrl)
+      const results = parseSitemap(raw, base, normalizedQuery)
+      diagnostics.parsedSourceUrls.push(sitemapUrl)
       if (results.length) {
-        return results
+        return { results, diagnostics }
       }
-    }
-  } catch {
-    return []
+    } catch {}
   }
 
-  return []
+  return { results: [], diagnostics }
 }
