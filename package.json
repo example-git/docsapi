@@ -4,9 +4,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "dev": "next dev -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0",
+    "start:standalone": "node .next/standalone/server.js",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -20,16 +21,22 @@
     "@modelcontextprotocol/sdk": "^1.17.4",
     "hono": "^4.9.4",
     "linkedom": "^0.18.12",
+    "next": "^15.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "turndown": "^7.2.0",
     "turndown-plugin-gfm": "^1.0.2",
+    "yauzl": "^2.10.0",
     "zod": "^3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.2",
     "@cloudflare/puppeteer": "^1.0.4",
     "@cloudflare/vitest-pool-workers": "^0.8.68",
+    "@types/react": "19.2.14",
+    "@types/yauzl": "^2.10.3",
     "@vitest/ui": "^3.2.4",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.32.0"
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
   }
 }

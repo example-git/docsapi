@@ -148,8 +148,11 @@ function generateHIGFrontMatter(jsonData: HIGPageJSON, sourceUrl: string): strin
   frontMatter.source = sourceUrl
   frontMatter.timestamp = new Date().toISOString()
 
-  // Convert to YAML format
-  const yamlLines = Object.entries(frontMatter).map(([key, value]) => `${key}: ${value}`)
+  // Convert to YAML format (quote values to handle colons and special chars)
+  const yamlLines = Object.entries(frontMatter).map(([key, value]) => {
+    const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    return `${key}: "${escaped}"`
+  })
   return `---\n${yamlLines.join("\n")}\n---\n\n`
 }
 

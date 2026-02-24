@@ -2,9 +2,19 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { z } from "zod"
 
 import { fetchDocumentationMarkdown } from "./docset"
-import { searchDocumentationWithDiagnostics } from "./docset/search"
 import { docsetTypes } from "./docset/types"
+import { searchDocumentationWithDiagnostics } from "./docset/search"
 import { fetchHIGPageData, renderHIGFromJSON } from "./hig"
+import {
+  findLocalDocByUrl,
+  findLocalDoc,
+  hasLocalSlug,
+  listLocalSlugs,
+  loadLocalSiteIndex,
+  readLocalDocContent,
+  searchLocalDocumentation,
+} from "./local-docs"
+import { fetchJSONData, renderFromJSON } from "./reference"
 import { searchAppleDeveloperDocs } from "./search"
 import { generateAppleDocUrl, normalizeDocumentationPath } from "./url"
 
@@ -26,6 +36,28 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
         reject(error)
       })
   })
+}
+
+function isApplePath(value: string): boolean {
+  return (
+    value.includes("design/human-interface-guidelines") ||
+    value.startsWith("/documentation/") ||
+    value.startsWith("documentation/")
+  )
+}
+
+function extractApplePathFromUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value)
+    if (parsed.hostname !== "developer.apple.com") return null
+    return parsed.pathname
+  } catch {
+    return null
+  }
+}
+
+function isLikelyUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value)
 }
 
 export function createMcpServer() {
@@ -80,216 +112,62 @@ export function createMcpServer() {
     },
   )
 
-  // Register Apple search tool
   server.registerTool(
-    "searchAppleDocumentation",
+    "fetchDocs",
     {
-      title: "Search Apple Documentation",
-      description: "Search Apple Developer documentation and return structured results",
-      inputSchema: {
-        query: z.string().describe("Search query for Apple documentation"),
-      },
-      outputSchema: {
-        query: z.string().describe("The search query that was executed"),
-        results: z
-          .array(
-            z.object({
-              title: z.string().describe("Title of the documentation page"),
-              url: z.string().describe("Full URL to the documentation page"),
-              description: z.string().describe("Brief description of the page content"),
-              breadcrumbs: z
-                .array(z.string())
-                .describe("Navigation breadcrumbs showing the page hierarchy"),
-              tags: z
-                .array(z.string())
-                .describe("Tags associated with the page (languages, platforms, etc.)"),
-              type: z.string().describe("Type of result (documentation, general, etc.)"),
-            }),
-          )
-          .describe("Array of search results"),
-      },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async ({ query }) => {
-      try {
-        const searchResponse = await withTimeout(
-          searchAppleDeveloperDocs(query),
-          MCP_TOOL_TIMEOUT_MS,
-          "Apple search",
-        )
-
-        const structuredContent = {
-          query: searchResponse.query,
-          results: searchResponse.results.map((result) => ({
-            title: result.title,
-            url: result.url,
-            description: result.description,
-            breadcrumbs: result.breadcrumbs,
-            tags: result.tags,
-            type: result.type,
-          })),
-        }
-
-        if (searchResponse.results.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `No results found for "${query}"`,
-              },
-            ],
-            structuredContent,
-          }
-        }
-
-        // Provide a readable text summary
-        const resultText =
-          `Found ${searchResponse.results.length} result(s) for "${query}":\n\n` +
-          searchResponse.results
-            .map(
-              (result, index) =>
-                `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.description || "No description"}`,
-            )
-            .join("\n\n")
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: resultText,
-            },
-          ],
-          structuredContent,
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error"
-
-        const structuredContent = {
-          query,
-          results: [],
-        }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error searching Apple Developer documentation: ${errorMessage}`,
-            },
-          ],
-          structuredContent,
-        }
-      }
-    },
-  )
-
-  // Register documentation fetch tool (supports both dev docs and HIG)
-  server.registerTool(
-    "fetchAppleDocumentation",
-    {
-      title: "Fetch Apple Documentation",
+      title: "Fetch Docs",
       description:
-        "Fetch Apple Developer documentation and Human Interface Guidelines by path and return as markdown",
+        "Intelligently fetch docs from local cache, Apple docs, or online doc sites based on provided inputs.",
       inputSchema: {
-        path: z
+        source: z.string().optional().describe("Optional source slug or source URL."),
+        baseUrl: z.string().optional().describe("Base URL for online docs (e.g., 'https://docs.example.com')."),
+        slug: z
           .string()
-          .describe(
-            "Documentation path (e.g., '/documentation/swift', 'swiftui/view', 'design/human-interface-guidelines/foundations/color')",
-          ),
-      },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async ({ path }) => {
-      try {
-        // Check if this is a HIG path
-        if (path.includes("design/human-interface-guidelines")) {
-          // Handle HIG content
-          const higPath = path.replace(/^\/?(design\/human-interface-guidelines\/)/, "")
-          const sourceUrl = `https://developer.apple.com/design/human-interface-guidelines/${higPath}`
-
-          const jsonData = await fetchHIGPageData(higPath)
-          const markdown = await renderHIGFromJSON(jsonData, sourceUrl)
-
-          if (!markdown || markdown.trim().length < 100) {
-            throw new Error("Insufficient content in HIG page")
-          }
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: markdown,
-              },
-            ],
-          }
-        } else {
-          // Handle regular developer documentation
-          const normalizedPath = normalizeDocumentationPath(path)
-          const appleUrl = generateAppleDocUrl(normalizedPath)
-
-          const jsonData = await fetchJSONData(normalizedPath)
-          const markdown = await renderFromJSON(jsonData, appleUrl)
-
-          if (!markdown || markdown.trim().length < 100) {
-            throw new Error("Insufficient content in documentation")
-          }
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: markdown,
-              },
-            ],
-          }
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error"
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error fetching content for "${path}": ${errorMessage}`,
-            },
-          ],
-        }
-      }
-    },
-  )
-
-  // Register generic documentation fetch tool with baseUrl support
-  server.registerTool(
-    "fetchDocumentation",
-    {
-      title: "Fetch Documentation",
-      description:
-        "Fetch documentation from a base URL and path, auto-detecting common docset generators",
-      inputSchema: {
-        baseUrl: z.string().describe("Base documentation URL (e.g., 'https://docs.example.com')"),
+          .optional()
+          .describe("Local docs slug under ./local/{slug}."),
+        docId: z.string().optional().describe("Document ID from site-index.json (e.g., 'doc-00042')."),
+        url: z.string().optional().describe("Doc URL for online fetch or local match."),
         path: z
           .string()
           .optional()
-          .describe("Optional path or full URL to a specific doc page (e.g., '/guide/intro')"),
+          .describe(
+            "Doc path for apple/online fetch or local match (e.g., '/documentation/swift' or '/guide/intro').",
+          ),
+        title: z.string().optional().describe("Title (exact or contains match)."),
         docsetType: z
           .enum(docsetTypes)
           .optional()
-          .describe("Optional docset hint (e.g., 'docusaurus', 'mkdocs', 'sphinx')"),
+          .describe("Optional online docset hint (e.g., 'docusaurus', 'mkdocs', 'sphinx')."),
       },
       outputSchema: {
-        url: z.string().describe("Resolved URL that was fetched"),
-        docsetType: z.enum(docsetTypes).describe("Detected or provided docset type"),
-        markdown: z.string().describe("Documentation content rendered as Markdown"),
-        error: z.string().optional().describe("Error message when the fetch fails"),
+        source: z.enum(["local", "apple", "online"]),
+        slug: z.string(),
+        baseUrl: z.string(),
+        url: z.string().optional(),
+        docsetType: z.string().optional(),
+        doc: z
+          .object({
+            id: z.string(),
+            title: z.string(),
+            url: z.string(),
+            path: z.string(),
+            docsetType: z.string(),
+            contentFile: z.string(),
+            indexFile: z.string(),
+          })
+          .optional(),
+        markdown: z.string().optional(),
+        suggestions: z
+          .array(
+            z.object({
+              id: z.string(),
+              title: z.string(),
+              path: z.string(),
+              url: z.string(),
+            }),
+          )
+          .optional(),
+        error: z.string().optional(),
       },
       annotations: {
         readOnlyHint: true,
@@ -298,53 +176,235 @@ export function createMcpServer() {
         openWorldHint: true,
       },
     },
-    async ({ baseUrl, path, docsetType }) => {
+    async ({ source, baseUrl, slug, docId, url, path, title, docsetType }) => {
+      const sourceHint = source?.trim()
+      const sourceSlug = sourceHint && !isLikelyUrl(sourceHint) ? sourceHint : undefined
+      const sourceUrl = sourceHint && isLikelyUrl(sourceHint) ? sourceHint : undefined
+      const localSlugHint = slug?.trim() || sourceSlug
+      const localUrlHint = url || sourceUrl
       try {
+        if (localSlugHint && (await hasLocalSlug(localSlugHint))) {
+          const { slug: resolvedSlug, siteIndex } = await loadLocalSiteIndex({ slug: localSlugHint })
+          const selectorProvided = Boolean(docId || url || path || title)
+          const { doc, suggestions } = findLocalDoc(siteIndex.docs, { docId, url, path, title })
+
+          if (!selectorProvided) {
+            const top = siteIndex.docs.slice(0, 10)
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    "No selector was provided. Pass one of docId, url, path, or title.\n\n" +
+                    top.map((entry) => `- ${entry.id}: ${entry.title} (${entry.path})`).join("\n"),
+                },
+              ],
+              structuredContent: {
+                source: "local" as const,
+                slug: resolvedSlug,
+                baseUrl: siteIndex.baseUrl,
+                suggestions: top.map((entry) => ({
+                  id: entry.id,
+                  title: entry.title,
+                  path: entry.path,
+                  url: entry.url,
+                })),
+              },
+            }
+          }
+
+          if (doc) {
+            const markdown = await withTimeout(
+              readLocalDocContent(resolvedSlug, doc.contentFile),
+              MCP_TOOL_TIMEOUT_MS,
+              "Local documentation fetch",
+            )
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: markdown,
+                },
+              ],
+              structuredContent: {
+                source: "local" as const,
+                slug: resolvedSlug,
+                baseUrl: siteIndex.baseUrl,
+                url: doc.url,
+                docsetType: doc.docsetType,
+                doc: {
+                  id: doc.id,
+                  title: doc.title,
+                  url: doc.url,
+                  path: doc.path,
+                  docsetType: doc.docsetType,
+                  contentFile: doc.contentFile,
+                  indexFile: doc.indexFile,
+                },
+                markdown,
+                suggestions: suggestions.map((entry) => ({
+                  id: entry.id,
+                  title: entry.title,
+                  path: entry.path,
+                  url: entry.url,
+                })),
+              },
+            }
+          }
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No matching local document found.",
+              },
+            ],
+            structuredContent: {
+              source: "local" as const,
+              slug: localSlugHint,
+              baseUrl: siteIndex.baseUrl,
+              suggestions: suggestions.map((entry) => ({
+                id: entry.id,
+                title: entry.title,
+                path: entry.path,
+                url: entry.url,
+              })),
+              error: "No matching local document found.",
+            },
+          }
+        }
+
+        if (localUrlHint) {
+          const localMatch = await findLocalDocByUrl(localUrlHint)
+          if (localMatch) {
+            const markdown = await withTimeout(
+              readLocalDocContent(localMatch.slug, localMatch.doc.contentFile),
+              MCP_TOOL_TIMEOUT_MS,
+              "Local documentation fetch",
+            )
+            return {
+              content: [{ type: "text" as const, text: markdown }],
+              structuredContent: {
+                source: "local" as const,
+                slug: localMatch.slug,
+                baseUrl: localMatch.siteIndex.baseUrl,
+                url: localMatch.doc.url,
+                docsetType: localMatch.doc.docsetType,
+                doc: {
+                  id: localMatch.doc.id,
+                  title: localMatch.doc.title,
+                  url: localMatch.doc.url,
+                  path: localMatch.doc.path,
+                  docsetType: localMatch.doc.docsetType,
+                  contentFile: localMatch.doc.contentFile,
+                  indexFile: localMatch.doc.indexFile,
+                },
+                markdown,
+              },
+            }
+          }
+        }
+
+        const applePathFromUrl = extractApplePathFromUrl(url || sourceUrl || baseUrl || "")
+        const maybeApplePath = path || applePathFromUrl
+        const shouldUseApple = Boolean(applePathFromUrl || (maybeApplePath && isApplePath(maybeApplePath)))
+
+        if (shouldUseApple && maybeApplePath) {
+          if (maybeApplePath.includes("design/human-interface-guidelines")) {
+            const higPath = maybeApplePath.replace(/^\/?(design\/human-interface-guidelines\/)/, "")
+            const sourceUrl = `https://developer.apple.com/design/human-interface-guidelines/${higPath}`
+
+            const jsonData = await withTimeout(fetchHIGPageData(higPath), MCP_TOOL_TIMEOUT_MS, "Apple HIG fetch")
+            const markdown = await withTimeout(renderHIGFromJSON(jsonData, sourceUrl), MCP_TOOL_TIMEOUT_MS, "Apple HIG render")
+            if (!markdown || markdown.trim().length < 100) {
+              throw new Error("Insufficient content in Apple HIG page")
+            }
+
+            return {
+              content: [{ type: "text" as const, text: markdown }],
+              structuredContent: {
+                source: "apple" as const,
+                slug: "",
+                baseUrl: "https://developer.apple.com",
+                url: sourceUrl,
+                docsetType: "apple",
+                markdown,
+              },
+            }
+          }
+
+          const normalizedPath = normalizeDocumentationPath(maybeApplePath)
+          const appleUrl = generateAppleDocUrl(normalizedPath)
+          const jsonData = await withTimeout(fetchJSONData(normalizedPath), MCP_TOOL_TIMEOUT_MS, "Apple docs fetch")
+          const markdown = await withTimeout(renderFromJSON(jsonData, appleUrl), MCP_TOOL_TIMEOUT_MS, "Apple docs render")
+          if (!markdown || markdown.trim().length < 100) {
+            throw new Error("Insufficient content in Apple documentation")
+          }
+
+          return {
+            content: [{ type: "text" as const, text: markdown }],
+            structuredContent: {
+              source: "apple" as const,
+              slug: "",
+              baseUrl: "https://developer.apple.com",
+              url: appleUrl,
+              docsetType: "apple",
+              markdown,
+            },
+          }
+        }
+
+        const onlineBaseUrl = baseUrl || sourceUrl || url
+        if (!onlineBaseUrl) {
+          throw new Error(
+            "Unable to resolve source. Provide a local slug/URL, an Apple docs URL/path, or an online base URL.",
+          )
+        }
+
         const {
           markdown,
-          url,
+          url: resolvedUrl,
           docsetType: resolvedType,
         } = await withTimeout(
           fetchDocumentationMarkdown({
-            baseUrl,
+            baseUrl: onlineBaseUrl,
             path,
             docsetType,
           }),
           MCP_TOOL_TIMEOUT_MS,
-          "Documentation fetch",
+          "Online documentation fetch",
         )
-
         if (!markdown || markdown.trim().length < 100) {
-          throw new Error("Insufficient content in documentation")
+          throw new Error("Insufficient content in online documentation")
         }
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: markdown,
-            },
-          ],
+          content: [{ type: "text" as const, text: markdown }],
           structuredContent: {
-            url,
+            source: "online" as const,
+            slug: "",
+            baseUrl: onlineBaseUrl,
+            url: resolvedUrl,
             docsetType: resolvedType,
             markdown,
           },
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error"
-
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error fetching documentation: ${errorMessage}`,
+              text: `Error reading local documentation: ${errorMessage}`,
             },
           ],
           structuredContent: {
-            url: path ? `${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}` : baseUrl,
-            docsetType: docsetType ?? "generic",
-            markdown: "",
+            source: "online",
+            slug: localSlugHint ?? "",
+            baseUrl: baseUrl ?? "",
+            url: url ?? undefined,
+            docsetType: docsetType ?? undefined,
             error: errorMessage,
           },
         }
@@ -353,66 +413,43 @@ export function createMcpServer() {
   )
 
   server.registerTool(
-    "searchDocumentation",
+    "listDocs",
     {
-      title: "Search Documentation",
-      description: "Basic search across common docset generators using the site's index or sitemap",
-      inputSchema: {
-        baseUrl: z.string().describe("Base documentation URL (e.g., 'https://docs.example.com')"),
-        query: z.string().describe("Search query"),
-        docsetType: z
-          .enum(docsetTypes)
-          .optional()
-          .describe("Optional docset hint (e.g., 'mkdocs', 'sphinx')"),
-      },
+      title: "List Local Documentation",
+      description: "List all available local documentation slugs and per-slug document counts.",
+      inputSchema: {},
       outputSchema: {
-        query: z.string(),
-        results: z.array(
+        slugs: z.array(
           z.object({
-            title: z.string(),
-            url: z.string(),
-            snippet: z.string(),
-            source: z.string(),
+            slug: z.string(),
+            baseUrl: z.string(),
+            totalDocs: z.number(),
           }),
         ),
+        error: z.string().optional(),
       },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
-        openWorldHint: true,
+        openWorldHint: false,
       },
     },
-    async ({ baseUrl, query, docsetType }) => {
+    async () => {
       try {
-        const { results, diagnostics } = await withTimeout(
-          searchDocumentationWithDiagnostics(baseUrl, query, docsetType),
-          MCP_TOOL_TIMEOUT_MS,
-          "Documentation search",
-        )
-
-        const noFetchedSources = diagnostics.fetchedSourceUrls.length === 0
-        const noParsedSources = diagnostics.parsedSourceUrls.length === 0
-
-        const message =
-          results.length === 0
-            ? noFetchedSources
-              ? `No results: no searchable index/sitemap was found for "${baseUrl}".`
-              : noParsedSources
-                ? "No results: a search source was fetched but could not be parsed."
-                : `No results found for "${query}" (search index/sitemap was available).`
-            : `Found ${results.length} result(s) for "${query}".`
+        const slugs = await listLocalSlugs()
 
         return {
           content: [
             {
               type: "text" as const,
-              text: message,
+              text:
+                `Found ${slugs.length} local documentation slug(s)\n\n` +
+                slugs.map((entry) => `- ${entry.slug}: ${entry.totalDocs} docs`).join("\n"),
             },
           ],
           structuredContent: {
-            query,
-            results,
+            slugs,
           },
         }
       } catch (error) {
@@ -421,12 +458,243 @@ export function createMcpServer() {
           content: [
             {
               type: "text" as const,
-              text: `Error searching documentation: ${errorMessage}`,
+              text: `Error listing local documentation: ${errorMessage}`,
             },
           ],
           structuredContent: {
+            slugs: [],
+            error: errorMessage,
+          },
+        }
+      }
+    },
+  )
+
+  server.registerTool(
+    "searchDocs",
+    {
+      title: "Search Docs",
+      description:
+        "Search docs using source routing: local for known slug/URL, Apple for developer.apple.com URLs, otherwise online.",
+      inputSchema: {
+        query: z.string().describe("Search query"),
+        source: z.string().optional().describe("Optional source slug or source URL."),
+        slug: z
+          .string()
+          .optional()
+          .describe("Optional slug filter. If omitted, searches across all available slugs."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe("Maximum number of results to return (default: 50)."),
+      },
+      outputSchema: {
+        source: z.enum(["local", "apple", "online"]),
+        query: z.string(),
+        totalResults: z.number(),
+        searchedSlugs: z.array(z.string()),
+        results: z.array(
+          z.object({
+            slug: z.string().optional(),
+            title: z.string(),
+            url: z.string(),
+            snippet: z.string(),
+            score: z.number().optional(),
+          }),
+        ),
+        error: z.string().optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ query, source, slug, limit }) => {
+      const sourceHint = source?.trim()
+      const sourceSlug = sourceHint && !isLikelyUrl(sourceHint) ? sourceHint : undefined
+      const sourceUrl = sourceHint && isLikelyUrl(sourceHint) ? sourceHint : undefined
+      const slugHint = slug?.trim() || sourceSlug
+      try {
+        if (slugHint && (await hasLocalSlug(slugHint))) {
+          const payload = await searchLocalDocumentation({ query, slug: slugHint, limit })
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Found ${payload.totalResults} local match(es) for "${query}" in ${slugHint}\n\n` +
+                  payload.results
+                    .map((entry, index) => `${index + 1}. [${entry.slug}] ${entry.title}\n   ${entry.url}\n   ${entry.snippet}`)
+                    .join("\n\n"),
+              },
+            ],
+            structuredContent: {
+              source: "local" as const,
+              query: payload.query,
+              totalResults: payload.totalResults,
+              searchedSlugs: payload.searchedSlugs,
+              results: payload.results.map((entry) => ({
+                slug: entry.slug,
+                title: entry.title,
+                url: entry.url,
+                snippet: entry.snippet,
+                score: entry.score,
+              })),
+            },
+          }
+        }
+
+        if (sourceUrl) {
+          const localByUrl = await findLocalDocByUrl(sourceUrl)
+          if (localByUrl) {
+            const payload = await searchLocalDocumentation({ query, slug: localByUrl.slug, limit })
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `Found ${payload.totalResults} local match(es) for "${query}" in ${localByUrl.slug}\n\n` +
+                    payload.results
+                      .map((entry, index) => `${index + 1}. [${entry.slug}] ${entry.title}\n   ${entry.url}\n   ${entry.snippet}`)
+                      .join("\n\n"),
+                },
+              ],
+              structuredContent: {
+                source: "local" as const,
+                query: payload.query,
+                totalResults: payload.totalResults,
+                searchedSlugs: payload.searchedSlugs,
+                results: payload.results.map((entry) => ({
+                  slug: entry.slug,
+                  title: entry.title,
+                  url: entry.url,
+                  snippet: entry.snippet,
+                  score: entry.score,
+                })),
+              },
+            }
+          }
+        }
+
+        const applePath = extractApplePathFromUrl(sourceUrl || "")
+        if (applePath) {
+          const payload = await withTimeout(searchAppleDeveloperDocs(query), MCP_TOOL_TIMEOUT_MS, "Apple docs search")
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Found ${payload.results.length} Apple match(es) for "${query}"\n\n` +
+                  payload.results
+                    .map((entry, index) => `${index + 1}. ${entry.title}\n   ${entry.url}\n   ${entry.description || ""}`)
+                    .join("\n\n"),
+              },
+            ],
+            structuredContent: {
+              source: "apple" as const,
+              query: payload.query,
+              totalResults: payload.results.length,
+              searchedSlugs: [],
+              results: payload.results.map((entry) => ({
+                title: entry.title,
+                url: entry.url,
+                snippet: entry.description || "",
+              })),
+            },
+          }
+        }
+
+        if (!sourceUrl) {
+          const payload = await searchLocalDocumentation({ query, slug: slugHint, limit })
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Found ${payload.totalResults} local match(es) for "${query}" across ${payload.searchedSlugs.length} slug(s)\n\n` +
+                  payload.results
+                    .map((entry, index) => `${index + 1}. [${entry.slug}] ${entry.title}\n   ${entry.url}\n   ${entry.snippet}`)
+                    .join("\n\n"),
+              },
+            ],
+            structuredContent: {
+              source: "local" as const,
+              query: payload.query,
+              totalResults: payload.totalResults,
+              searchedSlugs: payload.searchedSlugs,
+              results: payload.results.map((entry) => ({
+                slug: entry.slug,
+                title: entry.title,
+                url: entry.url,
+                snippet: entry.snippet,
+                score: entry.score,
+              })),
+            },
+          }
+        }
+
+        const { results, diagnostics } = await withTimeout(
+          searchDocumentationWithDiagnostics(sourceUrl, query),
+          MCP_TOOL_TIMEOUT_MS,
+          "Online docs search",
+        )
+        const noFetchedSources = diagnostics.fetchedSourceUrls.length === 0
+        const noParsedSources = diagnostics.parsedSourceUrls.length === 0
+        const message =
+          results.length === 0
+            ? noFetchedSources
+              ? `No results: no searchable index/sitemap was found for "${sourceUrl}".`
+              : noParsedSources
+                ? "No results: a search source was fetched but could not be parsed."
+                : `No results found for "${query}" (search index/sitemap was available).`
+            : `Found ${results.length} online result(s) for "${query}".`
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text:
+                message +
+                (results.length
+                  ? `\n\n${results
+                      .map((entry, index) => `${index + 1}. ${entry.title}\n   ${entry.url}\n   ${entry.snippet}`)
+                      .join("\n\n")}`
+                  : ""),
+            },
+          ],
+          structuredContent: {
+            source: "online" as const,
             query,
+            totalResults: results.length,
+            searchedSlugs: [],
+            results: results.map((entry) => ({
+              title: entry.title,
+              url: entry.url,
+              snippet: entry.snippet,
+            })),
+          },
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error"
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error searching local documentation: ${errorMessage}`,
+            },
+          ],
+          structuredContent: {
+            source: "local",
+            query,
+            totalResults: 0,
+            searchedSlugs: slugHint ? [slugHint] : [],
             results: [],
+            error: errorMessage,
           },
         }
       }

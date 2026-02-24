@@ -138,20 +138,24 @@ export async function fetchDocumentationMarkdown(
   try {
     html = await fetchHtml(fetchUrl)
   } catch (error) {
+    let slashSucceeded = false
     if (!fetchUrl.endsWith("/") && !/\.[a-z0-9]+$/i.test(fetchUrl)) {
       const withSlash = `${fetchUrl}/`
       try {
         html = await fetchHtml(withSlash)
         fetchUrl = withSlash
+        slashSucceeded = true
       } catch {
         // fall through to other fallbacks
       }
     }
-    if (resolvedUrl !== targetUrl) {
-      fetchUrl = resolvedUrl
-      html = await fetchHtml(fetchUrl)
-    } else {
-      throw error
+    if (!slashSucceeded) {
+      if (resolvedUrl !== targetUrl) {
+        fetchUrl = resolvedUrl
+        html = await fetchHtml(fetchUrl)
+      } else {
+        throw error
+      }
     }
   }
 

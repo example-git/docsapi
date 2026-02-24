@@ -29,10 +29,20 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# next.js build output
+.next/
+
 # misc
 .DS_Store
+CLAUDE.md
 
 .dev.vars*
 !.dev.vars.example
 .env*
 !.env.example
+
+
+local/
+
+# cloudflared tunnel credentials (never commit)
+cloudflared/credentials.json

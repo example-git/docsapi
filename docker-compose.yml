@@ -1,0 +1,23 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+    restart: unless-stopped
+
+  docsapi:
+    build: .
+    network_mode: "service:cloudflared"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      LOCAL_DOCS_PASSWORD: ${LOCAL_DOCS_PASSWORD}
+    volumes:
+      - ${LOCAL_DOCS_PATH:-./local}:/app/local
+    depends_on:
+      - cloudflared
+    restart: unless-stopped

@@ -1,0 +1,4 @@
+ingress:
+  - hostname: docsapi.xo.vg
+    service: http://localhost:3000
+  - service: http_status:404

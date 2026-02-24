@@ -1,0 +1,29 @@
+# dependencies
+node_modules
+
+# build outputs
+.next
+.tmp
+coverage
+
+# local downloaded docs
+local
+
+# VCS/editor
+.git
+.gitignore
+.github
+.vscode
+
+# env files
+.env
+.env.*
+
+# docs and misc
+README.md
+AGENTS.md
+LICENSE.md
+
+# tests and tooling caches
+tests
+.wrangler

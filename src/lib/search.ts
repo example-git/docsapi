@@ -1,3 +1,4 @@
+import { parseHTML } from "linkedom"
 import { fetchWithRateLimit } from "./fetch"
 
 export interface SearchResult {
@@ -14,125 +15,6 @@ export interface SearchResponse {
   results: SearchResult[]
 }
 
-class SearchResultParser {
-  private results: SearchResult[] = []
-  private currentResult: Partial<SearchResult> = {}
-  private currentBreadcrumbs: string[] = []
-  private currentTags: string[] = []
-  private isInResultTitle = false
-  private isInResultDescription = false
-  private isInBreadcrumb = false
-  private isInTag = false
-
-  getResults(): SearchResult[] {
-    return this.results
-  }
-
-  private resetCurrentResult() {
-    this.currentResult = {}
-    this.currentBreadcrumbs = []
-    this.currentTags = []
-    this.isInResultTitle = false
-    this.isInResultDescription = false
-    this.isInBreadcrumb = false
-    this.isInTag = false
-  }
-
-  private finalizeCurrentResult() {
-    if (this.currentResult.title && this.currentResult.url) {
-      this.results.push({
-        title: this.currentResult.title,
-        url: this.currentResult.url,
-        description: this.currentResult.description || "",
-        breadcrumbs: [...this.currentBreadcrumbs],
-        tags: [...this.currentTags],
-        type: this.currentResult.type || "unknown",
-      })
-    }
-    this.resetCurrentResult()
-  }
-
-  element(element: Element) {
-    // Start of a search result
-    if (element.tagName === "li" && element.getAttribute("class")?.includes("search-result")) {
-      this.finalizeCurrentResult() // Finalize previous result if any
-
-      // Extract result type from class
-      const className = element.getAttribute("class") || ""
-      if (className.includes("documentation")) {
-        this.currentResult.type = "documentation"
-      } else if (className.includes("general")) {
-        this.currentResult.type = "general"
-      } else {
-        this.currentResult.type = "other"
-      }
-    }
-
-    // Result title link
-    if (
-      element.tagName === "a" &&
-      element.getAttribute("class")?.includes("click-analytics-result")
-    ) {
-      const href = element.getAttribute("href")
-      if (href) {
-        this.currentResult.url = href.startsWith("/") ? `https://developer.apple.com${href}` : href
-      }
-      this.isInResultTitle = true
-    }
-
-    // Result description
-    if (element.tagName === "p" && element.getAttribute("class")?.includes("result-description")) {
-      this.isInResultDescription = true
-    }
-
-    // Breadcrumb items
-    if (
-      element.tagName === "li" &&
-      element.getAttribute("class")?.includes("breadcrumb-list-item")
-    ) {
-      this.isInBreadcrumb = true
-    }
-
-    // Tag spans
-    if (
-      element.tagName === "span" &&
-      element.parentElement?.getAttribute("class")?.includes("result-tag")
-    ) {
-      this.isInTag = true
-    }
-
-    // Tag list items (for languages like "Swift", "Objective-C")
-    if (
-      element.tagName === "li" &&
-      element.getAttribute("class")?.includes("result-tag language")
-    ) {
-      this.isInTag = true
-    }
-  }
-
-  text(text: Text) {
-    const content = text.text.trim()
-    if (!content) return
-
-    if (this.isInResultTitle && this.currentResult.url) {
-      this.currentResult.title = content
-      this.isInResultTitle = false
-    } else if (this.isInResultDescription) {
-      this.currentResult.description = content
-      this.isInResultDescription = false
-    } else if (this.isInBreadcrumb) {
-      this.currentBreadcrumbs.push(content)
-      this.isInBreadcrumb = false
-    } else if (this.isInTag) {
-      this.currentTags.push(content)
-      this.isInTag = false
-    }
-  }
-
-  end() {
-    this.finalizeCurrentResult() // Finalize the last result
-  }
-}
 
 export async function searchAppleDeveloperDocs(query: string): Promise<SearchResponse> {
   const searchUrl = `https://developer.apple.com/search/?q=${encodeURIComponent(query)}`
@@ -149,25 +31,41 @@ export async function searchAppleDeveloperDocs(query: string): Promise<SearchRes
       throw new Error(`Search request failed: ${response.status}`)
     }
 
-    const parser = new SearchResultParser()
+    const html = await response.text()
+    const { document } = parseHTML(html)
 
-    const rewriter = new HTMLRewriter()
-      .on("li.search-result", parser)
-      .on("li.search-result a.click-analytics-result", parser)
-      .on("li.search-result p.result-description", parser)
-      .on("li.search-result li.breadcrumb-list-item", parser)
-      .on("li.search-result li.result-tag", parser)
-      .on("li.search-result li.result-tag span", parser)
+    const resultItems = document.querySelectorAll("li.search-result")
+    const results: SearchResult[] = []
 
-    const transformedResponse = rewriter.transform(response)
+    for (const item of resultItems) {
+      const className = item.getAttribute("class") || ""
+      let type = "other"
+      if (className.includes("documentation")) type = "documentation"
+      else if (className.includes("general")) type = "general"
 
-    // We need to consume the response to trigger the parsing
-    await transformedResponse.text()
+      const linkEl = item.querySelector("a.click-analytics-result")
+      if (!linkEl) continue
 
-    // Call end to finalize any remaining results
-    parser.end()
+      const href = linkEl.getAttribute("href") || ""
+      const url = href.startsWith("/") ? `https://developer.apple.com${href}` : href
+      const title = linkEl.textContent?.trim() || ""
+      if (!title || !url) continue
 
-    const results = parser.getResults()
+      const descEl = item.querySelector("p.result-description")
+      const description = descEl?.textContent?.trim() || ""
+
+      const breadcrumbEls = item.querySelectorAll("li.breadcrumb-list-item")
+      const breadcrumbs = Array.from(breadcrumbEls)
+        .map((el) => el.textContent?.trim() || "")
+        .filter(Boolean)
+
+      const tagEls = item.querySelectorAll("li.result-tag")
+      const tags = Array.from(tagEls)
+        .map((el) => el.textContent?.trim() || "")
+        .filter(Boolean)
+
+      results.push({ title, url, description, breadcrumbs, tags, type })
+    }
 
     return {
       query,
